@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <cpuid.h>
+#include <unistd.h>
+#include "mt19937ar.h"
 
 #define BUFFER_SIZE 32
 #define TRUE 1
@@ -17,50 +19,101 @@ struct bufferItem itemList[BUFFER_SIZE];	// global item list, shared between pro
 
 int supportsRdRand; // global x86 support check
 
+pthread_mutex_t mutexLock;	// shared lock on thread
+pthread_cond_t consumerCondition, producerCondition;
+int bufferIndex;		// current index of buffer
+
 int getRandNum(int lowBoundary, int highBoundary) {
-	if(supportsX86 == FALSE) {
+	int num;
+	if(supportsRdRand == FALSE) {
 		// use Mersenne Twister
+		num = (int)genrand_int32();
 	} else {
 		// use rdrand
+		__asm__ volatile ("rdrand %0;" : "=r" (num));
+	}
+	num = abs(num); // absolute value
+	num = num % ((highBoundary - lowBoundary) + 1); // +1 makes it inclusive
+
+	return (num + lowBoundary);	// put it within range
+}
+
+void* producer(void* ptr) {
+	// produce random values for randNum, waitTime, and producerDelayTime
+	int randNum, waitTime, producerDelayTime;
+	struct bufferItem item;
+	item.randNum = getRandNum(0, 100);
+	item.waitTime = getRandNum(2, 9);
+	producerDelayTime = getRandNum(3, 7);
+
+	// wait for producerDelayTime
+	sleep(producerDelayTime);
+
+	while(TRUE) {
+		// printf("Produce\n");
+		item.randNum = getRandNum(0, 100);
+		item.waitTime = getRandNum(2, 9);
+		producerDelayTime = getRandNum(3, 7);
+
+		pthread_mutex_lock(&mutexLock);		// get lock
+		if(bufferIndex >= BUFFER_SIZE) {	// buffer full
+			pthread_cond_signal(&consumerCondition);
+			pthread_cond_wait(&producerCondition, &mutexLock);
+			printf("Buffer Full\n");
+		}
+
+		itemList[bufferIndex] = item;		// add item
+		bufferIndex++;
+		pthread_cond_signal(&consumerCondition);	// talk to consumer
+		pthread_cond_wait(&producerCondition, &mutexLock);
+		pthread_mutex_unlock(&mutexLock);	// unlock thread
 	}
 }
 
-void producer() {
-	// produce random values for randNum, waitTime, and producerDelayTime
-
-	// wait for producerDelayTime
-
-	// add randNum/waitTime to item list, iff buffer is not full (if full, wait again)
-
-	// lock thread access and write 
-
-	// if successful, unlock
-
-}
-
-void consumer() {
+void* consumer(void* ptr) {
 	// check for emptiness of buffer - if empty, wait;
-
-	// if not empty, lock thread access and read
-
-	// print consumed information and unlock
+	struct bufferItem item;
+	while(TRUE) {
+		// printf("Consume\n");
+		pthread_mutex_lock(&mutexLock);		// get lock
+		pthread_cond_signal(&producerCondition);	// talk to producer
+		pthread_cond_wait(&consumerCondition, &mutexLock);
+		if(bufferIndex == 0) {	// buffer empty; nothing to consume
+			pthread_cond_wait(&consumerCondition, &mutexLock);
+			printf("Buffer Empty\n");
+		}
+		bufferIndex--;
+		item = itemList[bufferIndex];
+		sleep(item.waitTime);
+		printf("Consumed: %d\n", item.randNum);
+		pthread_mutex_unlock(&mutexLock);
+	}
 }
 
 int isX86(){
 	const unsigned int flag_RDRAND = (1 << 30);
 	unsigned int eax, ebx, ecx, edx;
 	__get_cpuid(1, &eax, &ebx, &ecx, &edx);
-	return ((ecx & flag_RDRAND) == flag_RDRAND);
+	return ((ecx & flag_RDRAND) == flag_RDRAND);	// check size of ecx
 }
 
 int main(int argc, char* argv[]) {
 	// check rdrand support
+	init_genrand(time(NULL));
 	supportsRdRand = isX86();
 
-
 	// initialize concurrency/synchronization
+	pthread_t producerMutex, consumerMutex;
 
+	pthread_mutex_init(&mutexLock, NULL);
+	pthread_cond_init(&producerCondition, NULL);
+	pthread_cond_init(&consumerCondition, NULL);
 
+	pthread_create(&producerMutex, NULL, producer, NULL);	// create threads
+	pthread_create(&consumerMutex, NULL, consumer, NULL);
+
+	pthread_join(&producerMutex, NULL);		// join em
+	pthread_join(&consumerMutex, NULL);
 
 	return 0;
 }
