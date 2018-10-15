@@ -23,9 +23,7 @@ struct bufferData {
 	pthread_cond_t producerCondition;
 };
  
-
 int supportsRdRand; // global x86 support check
-
 
 int getRandNum(int lowBoundary, int highBoundary) {
 	int num;
@@ -46,8 +44,6 @@ void* producer(void* ptr) {
 	// produce random values for randNum, waitTime, and producerDelayTime
 	struct bufferData* buf = (struct bufferData*)ptr;
 	int producerDelayTime;
-
-	//struct bufferItem item;
 
 	producerDelayTime = getRandNum(3, 7);
 
@@ -122,8 +118,8 @@ int main(int argc, char* argv[]) {
 	pthread_create(&producerMutex, NULL, producer, (void*)&buf);	// create threads
 	pthread_create(&consumerMutex, NULL, consumer, (void*)&buf);
 
-	pthread_join(&producerMutex, NULL);		// join em
-	pthread_join(&consumerMutex, NULL);
+	pthread_join(producerMutex, NULL);		// join em
+	pthread_join(consumerMutex, NULL); 
 
 	return 0;
 }
