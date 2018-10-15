@@ -15,13 +15,17 @@ struct bufferItem
 	int waitTime;	// also random, should be between 2 and 9 seconds
 };
 
-struct bufferItem itemList[BUFFER_SIZE];	// global item list, shared between producer/consumer
+struct bufferData {
+	struct bufferItem itemList[BUFFER_SIZE];	// global item list, shared between producer/consumer
+	int bufferIndex;		// current index of buffer
+	pthread_mutex_t mutexLock;	// shared lock on thread
+	pthread_cond_t consumerCondition;
+	pthread_cond_t producerCondition;
+};
+ 
 
 int supportsRdRand; // global x86 support check
 
-pthread_mutex_t mutexLock;	// shared lock on thread
-pthread_cond_t consumerCondition, producerCondition;
-int bufferIndex;		// current index of buffer
 
 int getRandNum(int lowBoundary, int highBoundary) {
 	int num;
@@ -40,10 +44,11 @@ int getRandNum(int lowBoundary, int highBoundary) {
 
 void* producer(void* ptr) {
 	// produce random values for randNum, waitTime, and producerDelayTime
-	int randNum, waitTime, producerDelayTime;
-	struct bufferItem item;
-	item.randNum = getRandNum(0, 100);
-	item.waitTime = getRandNum(2, 9);
+	struct bufferData* buf = (struct bufferData*)ptr;
+	int producerDelayTime;
+
+	//struct bufferItem item;
+
 	producerDelayTime = getRandNum(3, 7);
 
 	// wait for producerDelayTime
@@ -51,42 +56,42 @@ void* producer(void* ptr) {
 
 	while(TRUE) {
 		// printf("Produce\n");
+		struct bufferItem item;
 		item.randNum = getRandNum(0, 100);
 		item.waitTime = getRandNum(2, 9);
-		producerDelayTime = getRandNum(3, 7);
 
-		pthread_mutex_lock(&mutexLock);		// get lock
-		if(bufferIndex >= BUFFER_SIZE) {	// buffer full
-			pthread_cond_signal(&consumerCondition);
-			pthread_cond_wait(&producerCondition, &mutexLock);
+		pthread_mutex_lock(&buf->mutexLock);		// get lock
+		if(buf->bufferIndex == BUFFER_SIZE) {	// buffer full
+			//pthread_cond_signal(&consumerCondition);
+			pthread_cond_wait(&buf->producerCondition, &buf->mutexLock);
 			printf("Buffer Full\n");
 		}
 
-		itemList[bufferIndex] = item;		// add item
-		bufferIndex++;
-		pthread_cond_signal(&consumerCondition);	// talk to consumer
-		pthread_cond_wait(&producerCondition, &mutexLock);
-		pthread_mutex_unlock(&mutexLock);	// unlock thread
+		buf->itemList[buf->bufferIndex] = item;		// add item
+		buf->bufferIndex++;
+		pthread_cond_signal(&buf->consumerCondition);	// talk to consumer
+		pthread_mutex_unlock(&buf->mutexLock);	// unlock thread
 	}
 }
 
 void* consumer(void* ptr) {
+	struct bufferData* buf = (struct bufferData*)ptr;
+
 	// check for emptiness of buffer - if empty, wait;
-	struct bufferItem item;
 	while(TRUE) {
 		// printf("Consume\n");
-		pthread_mutex_lock(&mutexLock);		// get lock
-		pthread_cond_signal(&producerCondition);	// talk to producer
-		pthread_cond_wait(&consumerCondition, &mutexLock);
-		if(bufferIndex == 0) {	// buffer empty; nothing to consume
-			pthread_cond_wait(&consumerCondition, &mutexLock);
+		struct bufferItem item;
+		pthread_mutex_lock(&buf->mutexLock);		// get lock
+		if(buf->bufferIndex == 0) {	// buffer empty; nothing to consume
+			pthread_cond_wait(&buf->consumerCondition, &buf->mutexLock);
 			printf("Buffer Empty\n");
 		}
-		bufferIndex--;
-		item = itemList[bufferIndex];
+		buf->bufferIndex--;
+		item = buf->itemList[buf->bufferIndex];
 		sleep(item.waitTime);
 		printf("Consumed: %d\n", item.randNum);
-		pthread_mutex_unlock(&mutexLock);
+		pthread_cond_signal(&buf->producerCondition);
+		pthread_mutex_unlock(&buf->mutexLock);
 	}
 }
 
@@ -99,18 +104,23 @@ int isX86(){
 
 int main(int argc, char* argv[]) {
 	// check rdrand support
+	printf("Start\n");
 	init_genrand(time(NULL));
 	supportsRdRand = isX86();
+
+	struct bufferData buf;
+	buf.bufferIndex = 0;
+
+	pthread_mutex_init(&(buf.mutexLock), NULL);
+	pthread_cond_init(&(buf.producerCondition), NULL);
+	pthread_cond_init(&(buf.consumerCondition), NULL);
+
 
 	// initialize concurrency/synchronization
 	pthread_t producerMutex, consumerMutex;
 
-	pthread_mutex_init(&mutexLock, NULL);
-	pthread_cond_init(&producerCondition, NULL);
-	pthread_cond_init(&consumerCondition, NULL);
-
-	pthread_create(&producerMutex, NULL, producer, NULL);	// create threads
-	pthread_create(&consumerMutex, NULL, consumer, NULL);
+	pthread_create(&producerMutex, NULL, producer, (void*)&buf);	// create threads
+	pthread_create(&consumerMutex, NULL, consumer, (void*)&buf);
 
 	pthread_join(&producerMutex, NULL);		// join em
 	pthread_join(&consumerMutex, NULL);
