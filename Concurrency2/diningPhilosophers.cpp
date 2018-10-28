@@ -23,6 +23,7 @@ pthread_mutex_t outputLock;
 
 struct Philosopher {
 	int state;
+	int num;
 	string name;
 	pthread_t philosopherThread;
 	pthread_mutex_t* leftFork; // num; these point to forks initialized in main
@@ -46,15 +47,30 @@ void* philosopher(void* ptr) {
 		}
 		// get lock on left fork
 		pthread_mutex_lock(currentPhil->leftFork);
+
+		pthread_mutex_lock(&outputLock);	// output
+		cout << "    " << currentPhil->name << " is holding fork " << currentPhil->num << endl;
+		pthread_mutex_unlock(&outputLock);
+
 		// eat
 		if(!pthread_mutex_lock(currentPhil->rightFork)) { // get lock on right fork
+
+			pthread_mutex_lock(&outputLock); // output
+			cout << "    " << currentPhil->name << " is holding fork " << (currentPhil->num + 1) % 5 << endl;
+			pthread_mutex_unlock(&outputLock);
+
 			pthread_mutex_lock(&outputLock);	// sync output access
 			cout << currentPhil->name << " is eating!" << endl;
 			pthread_mutex_unlock(&outputLock);
+
 			currentPhil->state = EATING;
 			sleep((rand() % 8) + 2);	// eating random wait time, 2-9sec
 			pthread_mutex_unlock(currentPhil->leftFork);	// put down the forks
 			pthread_mutex_unlock(currentPhil->rightFork);
+
+			pthread_mutex_lock(&outputLock); // output
+			cout << "    " << currentPhil->name << " has set down their forks" << endl;
+			pthread_mutex_unlock(&outputLock);
 		}	
 	}
 	return NULL;
@@ -75,6 +91,7 @@ int main(int argc, char* argv[]) {
 	for(int i = 0; i < NUM_PHILOSOPHERS_FORKS; i++) {
 		philosophers[i].name = names[i];
 		philosophers[i].state = INIT;
+		philosophers[i].num = i;
 		if(i <= NUM_PHILOSOPHERS_FORKS-2){
 			pthread_mutex_init(&forks[i], NULL);
 			pthread_mutex_init(&forks[i+1], NULL);
