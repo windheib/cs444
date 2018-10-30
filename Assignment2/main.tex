@@ -1,0 +1,232 @@
+\documentclass[onecolumn, draftclsnofoot,10pt, compsoc]{IEEEtran}
+\usepackage{url}
+\usepackage{setspace}
+\usepackage{listings}
+% \usepackage{dirtytalk}
+\usepackage{multirow, caption}
+
+% Our packages
+\usepackage{longtable}
+\usepackage{cite}
+\usepackage{geometry}
+\geometry{textheight=9.5in, textwidth=7in}
+
+% Our settings TODO?
+\lstset{basicstyle=\ttfamily}
+% 1. Fill in these details
+\def \GroupNumber{30}
+\def \GroupMembers{Ben Windheim, Kyle Baldes, Burton Jaursch}
+\def \ProjectName{Assignment 2 and Concurrency 2}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\begin{singlespace}
+\begin{titlepage}
+    \pagenumbering{gobble}
+        \hfill 
+        \par\vspace{.2in}
+        \centering
+        \scshape{
+            \textbf{\Huge\ProjectName}\par
+            \vspace{.5in}
+            {\Large
+                \GroupMembers\par
+                Group \GroupNumber\par
+            }
+            \large CS444 \par
+            \large Fall 2018\par
+            
+            
+            \vfill
+            %{\large Created by }\par
+            }
+            \begin{abstract}
+                This file encompasses the documentation for both Assignment 2 and Concurrency 2 for CS 444.  
+                
+            \end{abstract}
+
+
+
+
+
+
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Assignment 2 - I/O Elevators}
+ 
+\subsection{What do you think the main point of this assignment is?}
+
+    The main point of this assignment is to start to understand and get familiar with the Linux scheduler and scheduler algorithms. This was done by looking into the files within the Linux kernel that handled scheduling I/O requests, and understand how they interacted with other parts of the system.  
+    
+\subsection{How did your team approach the problem? Design decisions, algorithm, etc.}
+    We chose to implement the CLook scheduler because we felt it was slightly superior to Look. To create the scheduler we would sort requests into the queue by iterating through the queue until reaching a request in a higher sector than the incoming request. The new request would then be placed just before this higher request. Keeping then requests sorted in the queue made it much easier when dispatching them as they were already sorted in the correct order. 
+
+\subsection{How did you ensure your solution was correct? Testing details, for instance.}
+    
+    To test our solution we printed out the section location of each block that was dispatched. We could then check to make sure that if there was more than one message in the queue that the messages would be sent in order by section. This means that the algorithm will only move in one direction while reading and writing and will return to the beginning of the disk after reaching the highest segment number. The best time for output from our print statement comes when rebooting or shutting down the system as many requests are loaded into the queue and it becomes clear that the algorithm is doing its job.  
+\subsection{What did you learn?}
+    We learned a lot about the implementation of the Linux I/O scheduling algorithms. Further we also explored the many data structures required when working with requests. This assignment was challenging because it required us to have a good understanding of how the elevator must function in the Linux kernel. We also learned how to use the virtual machine much better and gained an appreciation for its versatility. 
+
+\subsection{Steps for Evaluation}
+How should the TA evaluate your work? Provide detailed steps to prove correctness.
+
+\begin{itemize}
+     
+
+\item Clone the yocto github repo with: 
+git clone git://git.yoctoproject.org/linux-yocto-3.19
+
+\item Change in the folder with: 
+cd linux-yocto-3.19
+
+\item Change to version 3.19.2 with:
+git checkout v3.19.2
+
+\item Copy /scratch/files/core-image-lsb-sdk-qemux86.ext4, and bzImage-qemux86.bin into the linux-yocto-3.19 directory
+
+\item Copy /scratch/files/config-3.19.2-yocto-standard into the linux-yocto-3.19 directory but named as .config
+
+\item Enter the environment for the virtual machine with: 
+source /scratch/files/environment-setup-i586-poky-linux 
+
+
+\item Replace Makefile and Kconfig.iosched in /block with the ones provided in tar ball
+
+\item Place clook-iosched.c in /block 
+
+\item Compile the kernel by running:
+make -j4 
+
+\item Startup the kernel in regular mode from inside the linux kernel directory with:
+qemu-system-i386 -gdb tcp::5530 -S -nographic -kernel ./arch/x86/boot/bzImage -drive file=core-image-lsb-sdk-qemux86.ext4 -enable-kvm -net none -usb -localtime --no-reboot --append "root=/dev/hda rw console=ttyS0"
+
+\item To output kernel debug messages directly to the terminal use:  
+qemu-system-i386 -gdb tcp::5530 -S -nographic -kernel ./arch/x86/boot/bzImage -drive file=core-image-lsb-sdk-qemux86.ext4 -enable-kvm -net none -usb -localtime --no-reboot --append "root=/dev/hda rw console=ttyS0 debug"
+
+\item In a separate terminal logged into os2 start gdb
+
+\item Target the virtual machine with:
+target remote :5530
+
+\item Start the virtual machine by running:
+continue
+
+\item Switch back to first terminal where the operating system will boot and login as root
+
+\item Once in VM run the following to switch to the clook scheduler:
+echo clook > /sys/block/hda/queue/scheduler
+
+Confirm that clook is selected with: 
+cat /sys/block/hda/queue/scheduler
+
+\item Create new files and directories and check the kernel debug messages to see which sectors the requests are being serviced in
+
+\item Exit the VM with: 
+reboot
+
+\end{itemize}
+
+
+
+\section{Concurrency 2 - Dining Philosophers}
+\subsection{What do you think the main point of this assignment is?}
+The Dining Philosophers Problem is a very natural extension of the Producer/Consumer Problem we approached in Concurrency 1. In that previous problem, we were told to write a C program using pthreads to allocate and delegate access to a shared resource - in this case, a buffer that was simply reading data in and out for a producer and consumer respectively. The instructions were a little more rigid in this problem statement, and the algorithmic implementations one could make to achieve a solution were less varied. In the case of the Dining Philosophers, we were given a larger problem, and one that could be scaled. Without explaining too many of the details of the problem, we had a total of 5 shared resources (forks) for 5 separate objects to use them (philosophers), of which each needed 2 forks to use (eat the pasta), and all objects had to use the resources (not starve) without the program blocking (deadlock). Additionally, the requirements were less rigid, opening up the assignment to use of other languages and the different approaches to this problem. For this, I believe this was a glimpse into how we should be thinking in parallel on a more complex scale, of which I can imagine we will further expand throughout this course. 
+
+\subsection{How did your team approach the problem? Design decisions, algorithm, etc.}
+The first design decision to make was to involve the language we would use. Because our last assignment was written in C and most of our experience in threading was limited to C, our first instincts were to use the tools we knew of already. However, we did some research into C++ for what the threading capabilities were, and they were very attractive, and we could always use C libraries if the tools didn't work for us. \\ 
+We next tried to write a pseudo-algorithm complete with the data structures and functions we could use. With no outside help, we built an algorithm that would have the philosophers all beginning to think for a random time, and when finished, grab up to two forks. If you have two forks, you eat, and if you have one fork, you have first priority to pick up the fork an eater puts down. This did work sometimes, but the solution had the potential to result in deadlock if all philosophers picked up forks at the same time, which happened often enough in testing to discourage us from using this algorithm. From here, we consulted Wikipedia and decided to borrow pieces of an algorithm proven to work. While we were previously thinking of a pile of forks in the middle of the table, one approach had the forks in a circle, in between each philosopher. This meant the philosophers only had access to the fork to their left and the fork to their right, checking only their neighbors instead of the whole table. This results in no two adjacent philosophers eating at the same time, but still allows parallelism, nobody starves, and deadlock does not occur as it guarantees a consistent cycle and no situation where all philosophers have one fork. This follows the general algorithm laid out in the assignment description, that is think, get forks, eat, put down forks, and repeat. \\
+One issue we came across was in the output data synchronization. Often, two threads would try to print at the same time. To fix this, we included an output data mutex lock that ensured only one thread was printing at a time. 
+
+\subsection{How did you ensure your solution was correct? Testing details, for instance.}
+To make grading simple, we included a lot of information in our program output, including the status of the active threads when they were taking action, and the location of all the forks. We can see that the philosophers are always picking up the correct forks, left then right, and we can see that they all put them down and are usually snatched up immediately. We can also see, when we run the program long enough, that it happens fairly regularly that two philosophers are eating at the same time (one philosopher is eating and another starts eating before the first puts their forks down). One thing we did not include in our final solution was a counter that kept track of how many times a philosopher ate throughout the duration. This number was almost always pretty evenly distributed with no philosophers eating much more than another. We can also see on multiple completions of the program, the program never reaches deadlock. 
+
+\subsection{What did you learn?}
+While we touched on this in summarizing the main point of the assignment, we learned a lot about threading and thinking in parallel, particularly in the synchronization of a higher degree of resources, and by implementing a very basic algorithm using complex structures and concepts. One especially important takeaway was the concept of synchronizing output data. This threw us for quite the loop trying to understand why sometimes two philosophers would be printing at the same time, resulting in unreadable garbage. We thought originally this was indicative of a larger design problem, but we quickly realized that this was simply fixable by attaching another mutex lock and treating output as a shared resource as well. Only one thread should have access at a time, which is really just like any other resource. 
+
+\subsection{How should the TA evaluate your work? Provide detailed steps to prove correctness.}
+This solution can be compiled by running \textit{make} in the directory of the program. The program requires no starting command line arguments, and can be run with \textit{./diningPhilosophers}, as specified in the README. This program does not terminate on its own, and will terminate by using control-C. From here, you will see output data from the program. Statements about the actions of the philosophers are not indented, and statements about the locations of the forks are indented. Let the program run for some time to increase the chances of different edge cases, and note the pattern of the actions. A philosopher will think, pick up two adjacent forks, eat, then put down the forks. Make sure everyone has eaten, and that the program has not stalled for a very long time (more than 20 seconds). There should be some indication of parallelism when you see two philosophers eating before one of them has set their forks down. This shows the concurrency. Additionally, the program was compiled with the \textit{-g} flag, so you can also run the program with \textit{gdb ./diningPhilosophers} and \textit{run}. This will show you the creation of the 5 threads and provide some more insight. This should be sufficient information for the grading of this assignment. 
+
+
+
+% Text
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\section*{Work Log}
+Kyle largely worked on the I/O Elevators from Saturday to Monday evening.The write up was started by Kyle and largely managed by Burton Monday evening. Ben completed the concurrency part and worked on it from 10/24 to Sunday afternoon. 
+
+
+% Text
+
+% %% This file was generated by the script latex-git-log
+% \begin{tabular}{lp{12cm}}
+%   \label{tabular:legend:git-log}
+%   \textbf{acronym} & \textbf{meaning} \\
+%   V & \texttt{version} \\
+%   tag & \texttt{git tag} \\
+%   MF & Number of \texttt{modified files}. \\
+%   AL & Number of \texttt{added lines}. \\
+%   DL & Number of \texttt{deleted lines}. \\
+% \end{tabular}
+
+% \bigskip
+
+% \iflanguage{ngerman}{\shorthandoff{"}}{}
+% \begin{longtable}{|rllp{13cm}rrr|}
+% \hline \multicolumn{1}{|c}{\textbf{V}} & \multicolumn{1}{c}{\textbf{tag}}
+% & \multicolumn{1}{c}{\textbf{date}}
+% & \multicolumn{1}{c}{\textbf{commit message}} & \multicolumn{1}{c}{\textbf{MF}}
+% & \multicolumn{1}{c}{\textbf{AL}} & \multicolumn{1}{c|}{\textbf{DL}} \\ \hline
+% \endhead
+
+% \hline \multicolumn{7}{|r|}{\longtableendfoot} \\ \hline
+% \endfoot
+
+% \hline% \hline
+% \endlastfoot
+
+% \hline 1 &  & 2018-10-03 & Create README.md & 1 & 2 & 0 \\
+% \hline 2 &  & 2018-10-10 & Skeleton code for concurrency & 1 & 66 & 0 \\
+% \hline 3 &  & 2018-10-11 & Producer/Consumer working & 3 & 316 & 16 \\
+% \end{longtable}
+%% This file was generated by the script latex-git-log 
+\pagebreak
+\section*{Commit Log}
+\begin{tabular}{lp{12cm}}
+  \label{tabular:legend:git-log}
+  \textbf{acronym} & \textbf{meaning} \\
+  V & \texttt{version} \\
+  tag & \texttt{git tag} \\
+  MF & Number of \texttt{modified files}. \\
+  AL & Number of \texttt{added lines}. \\
+  DL & Number of \texttt{deleted lines}. \\
+\end{tabular}
+
+\bigskip
+
+%\iflanguage{ngerman}{\shorthandoff{"}}{}
+\begin{longtable}{|rllp{6cm}rrr|}
+\hline \multicolumn{1}{|c}{\textbf{V}} & \multicolumn{1}{c}{\textbf{tag}}
+& \multicolumn{1}{c}{\textbf{date}}
+& \multicolumn{1}{c}{\textbf{commit message}} & \multicolumn{1}{c}{\textbf{MF}}
+& \multicolumn{1}{c}{\textbf{AL}} & \multicolumn{1}{c|}{\textbf{DL}} \\ \hline
+\endhead
+
+%\hline \multicolumn{7}{|r|}{\longtableendfoot} \\ \hline
+\endfoot
+
+\hline% \hline
+\endlastfoot
+
+\hline 1 &  & 2018-10-28 & almost working dining philosophers & 2 & 89 & 0 \\
+\hline 2 &  & 2018-10-28 & syncronized output data & 2 & 36 & 20 \\
+\hline 3 &  & 2018-10-28 & more output information & 1 & 17 & 0 \\
+
+\end{longtable}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{singlespace}
+\end{document}
