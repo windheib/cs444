@@ -1,0 +1,224 @@
+diff -rupN ../burn_dir/linux-yocto-3.19/block/clook-iosched.c linux-yocto-3.19/block/clook-iosched.c
+--- ../burn_dir/linux-yocto-3.19/block/clook-iosched.c	1969-12-31 16:00:00.000000000 -0800
++++ linux-yocto-3.19/block/clook-iosched.c	2018-10-29 23:54:09.695261426 -0700
+@@ -0,0 +1,173 @@
++/*
++ * elevator clook
++ * based on noop_iosched.c
++ */
++#include <linux/blkdev.h>
++#include <linux/elevator.h>
++#include <linux/bio.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++#include <linux/init.h>
++
++// Create struct with struct list_head in it 
++struct clook_data {
++	struct list_head queue;
++};
++
++
++
++// takes: request_queue pointer, request pointer and pointer to next request
++
++static void clook_merged_requests(struct request_queue *q, struct request *rq,
++				 struct request *next)
++{
++	list_del_init(&next->queuelist);
++}
++
++
++
++// EDIT THIS FUNCTION
++static int clook_dispatch(struct request_queue *q, int force)
++{
++	struct clook_data *nd = q->elevator->elevator_data; // nd points to request_queue's elevator data 
++
++	// if the queue is not empty then 
++	if (!list_empty(&nd->queue)) { 
++		struct request *rq; // Create request pointer
++		rq = list_entry(nd->queue.next, struct request, queuelist); // rq points to the request that is in the queue  
++		list_del_init(&rq->queuelist); 
++		
++		/*
++		* Insert rq into dispatch queue of q.  Queue lock must be held on
++		* entry.  rq is sort instead into the dispatch queue. To be used by
++		* specific elevators.
++		*/
++		printk(KERN_DEBUG "CLOOK: Dispatching in sector %llu \n", blk_rq_pos(rq));
++		elv_dispatch_sort(q, rq);
++
++		return 1;
++	}
++	printk(KERN_DEBUG "CLOOK: Queue is empty! \n");
++	return 0;
++}
++
++
++
++// EDIT THIS FUNCTION
++// Adds the request to the queue in the correct location
++// TAKES: pointer to the request queue and a request pointer
++
++static void clook_add_request(struct request_queue *q, struct request *rq)
++{
++	// nd is a clook_data pointer to the elevator data
++	// Gets the data structure for the elevator 
++	struct clook_data *nd = q->elevator->elevator_data;
++
++	struct list_head *c_location = NULL;
++
++	list_for_each(c_location, &nd->queue)
++	{
++		/* Iterate through requests and breaks when the current request has a higher
++		* sector number than the request to be added or when reaching the end of the queue 
++		*/
++		if(rq_end_sector(list_entry(c_location, struct request, queuelist)) > rq_end_sector(rq))
++		{
++			break;
++		}
++	}
++	// Adds the new request right before c_location in the queue
++	list_add_tail(&rq->queuelist, &nd->queue); 
++
++}
++
++
++
++static struct request *
++clook_former_request(struct request_queue *q, struct request *rq)
++{
++	struct clook_data *nd = q->elevator->elevator_data;
++
++	if (rq->queuelist.prev == &nd->queue)
++		return NULL;
++	return list_entry(rq->queuelist.prev, struct request, queuelist);
++}
++
++
++// Returns a request pointer 
++static struct request *
++clook_latter_request(struct request_queue *q, struct request *rq)
++{
++	struct clook_data *nd = q->elevator->elevator_data;
++
++	if (rq->queuelist.next == &nd->queue)
++		return NULL;
++	return list_entry(rq->queuelist.next, struct request, queuelist);
++}
++
++
++// Create elevator queue
++static int clook_init_queue(struct request_queue *q, struct elevator_type *e)
++{
++	struct clook_data *nd;
++	struct elevator_queue *eq;
++
++	eq = elevator_alloc(q, e);
++	if (!eq)
++		return -ENOMEM;
++
++	nd = kmalloc_node(sizeof(*nd), GFP_KERNEL, q->node);
++	if (!nd) {
++		kobject_put(&eq->kobj);
++		return -ENOMEM;
++	}
++	eq->elevator_data = nd;
++
++	INIT_LIST_HEAD(&nd->queue);
++
++	spin_lock_irq(q->queue_lock);
++	q->elevator = eq;
++	spin_unlock_irq(q->queue_lock);
++	return 0;
++}
++
++
++// 
++static void clook_exit_queue(struct elevator_queue *e)
++{
++	struct clook_data *nd = e->elevator_data;
++
++	BUG_ON(!list_empty(&nd->queue));
++	kfree(nd);
++}
++
++static struct elevator_type elevator_clook = {
++	.ops = {
++		.elevator_merge_req_fn		= clook_merged_requests,
++		.elevator_dispatch_fn		= clook_dispatch,
++		.elevator_add_req_fn		= clook_add_request,
++		.elevator_former_req_fn		= clook_former_request,
++		.elevator_latter_req_fn		= clook_latter_request,
++		.elevator_init_fn		= clook_init_queue,
++		.elevator_exit_fn		= clook_exit_queue,
++	},
++	.elevator_name = "clook",
++	.elevator_owner = THIS_MODULE,
++};
++
++static int __init clook_init(void)
++{
++	return elv_register(&elevator_clook);
++}
++
++static void __exit clook_exit(void)
++{
++	elv_unregister(&elevator_clook);
++}
++
++module_init(clook_init);
++module_exit(clook_exit);
++
++
++MODULE_AUTHOR("Jens Axboe");
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("clook IO scheduler");
+diff -rupN ../burn_dir/linux-yocto-3.19/block/Kconfig.iosched linux-yocto-3.19/block/Kconfig.iosched
+--- ../burn_dir/linux-yocto-3.19/block/Kconfig.iosched	2018-10-29 23:37:54.419782928 -0700
++++ linux-yocto-3.19/block/Kconfig.iosched	2018-10-29 19:38:41.382361652 -0700
+@@ -2,6 +2,13 @@ if BLOCK
+ 
+ menu "IO Schedulers"
+ 
++
++config IOSCHED_CLOOK
++	tristate "CLOOK I/O scheduler"
++	default y
++	---help--- 
++	  Our implementation of the CLook I/O scheduler 
++
+ config IOSCHED_NOOP
+ 	bool
+ 	default y
+@@ -54,6 +61,9 @@ choice
+ 
+ 	config DEFAULT_NOOP
+ 		bool "No-op"
++	
++	config DEFAULT_CLOOK
++		bool "CLOOK"
+ 
+ endchoice
+ 
+@@ -62,7 +72,7 @@ config DEFAULT_IOSCHED
+ 	default "deadline" if DEFAULT_DEADLINE
+ 	default "cfq" if DEFAULT_CFQ
+ 	default "noop" if DEFAULT_NOOP
+-
++	default "clook" if DEFAULT_CLOOK
+ endmenu
+ 
+ endif
+diff -rupN ../burn_dir/linux-yocto-3.19/block/Makefile linux-yocto-3.19/block/Makefile
+--- ../burn_dir/linux-yocto-3.19/block/Makefile	2018-10-29 23:37:54.419782928 -0700
++++ linux-yocto-3.19/block/Makefile	2018-10-29 19:38:03.147713496 -0700
+@@ -18,6 +18,7 @@ obj-$(CONFIG_BLK_DEV_THROTTLING)	+= blk-
+ obj-$(CONFIG_IOSCHED_NOOP)	+= noop-iosched.o
+ obj-$(CONFIG_IOSCHED_DEADLINE)	+= deadline-iosched.o
+ obj-$(CONFIG_IOSCHED_CFQ)	+= cfq-iosched.o
++obj-$(CONFIG_IOSCHED_CLOOK)     += clook-iosched.o
+ 
+ obj-$(CONFIG_BLOCK_COMPAT)	+= compat_ioctl.o
+ obj-$(CONFIG_BLK_CMDLINE_PARSER)	+= cmdline-parser.o
