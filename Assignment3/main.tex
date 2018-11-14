@@ -1,0 +1,156 @@
+\documentclass[onecolumn, draftclsnofoot,10pt, compsoc]{IEEEtran}
+\usepackage{url}
+\usepackage{setspace}
+\usepackage{listings}
+% \usepackage{dirtytalk}
+\usepackage{multirow, caption}
+
+% Our packages
+\usepackage{longtable}
+\usepackage{cite}
+\usepackage{geometry}
+\geometry{textheight=9.5in, textwidth=7in}
+
+% Our settings TODO?
+\lstset{basicstyle=\ttfamily}
+% 1. Fill in these details
+\def \GroupNumber{30}
+\def \GroupMembers{Ben Windheim, Kyle Baldes, Burton Jaursch}
+\def \ProjectName{Assignment 3}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\begin{singlespace}
+\begin{titlepage}
+    \pagenumbering{gobble}
+        \hfill 
+        \par\vspace{.2in}
+        \centering
+        \scshape{
+            \textbf{\Huge\ProjectName}\par
+            \vspace{.5in}
+            {\Large
+                \GroupMembers\par
+                Group \GroupNumber\par
+            }
+            \large CS444 \par
+            \large Fall 2018\par
+            
+            
+            \vfill
+            %{\large Created by }\par
+            }
+            \begin{abstract}
+                This file encompasses the documentation for both Assignment 2 and Concurrency 2 for CS 444.  
+                
+            \end{abstract}
+
+
+
+
+
+
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Assignment 3 - Morse Code Blinky}
+ 
+\subsection{What do you think the main point of this assignment is?}
+The main point of this assignment is in part explained by the assignment description: "Embedded programming is something you are likely to encounter as a kernel developer". Even without kernel development, embedded programming is a way to greatly expand the capabilities of our developer skill-sets, by forcing us into new environments with different rules and specification limitations to work around. In some sense, any graduate heading into the field will be experiencing some sort of deep-dive into a new technology where the development parameters have changed. In addition, this assignment reinforces concepts and content on devices, the drivers that accompany those devices, file I/O in the kernel, general kernel development, and working with triggers and continuously running programs. 
+
+\subsection{How did your team approach the problem? Design decisions, algorithm, etc.}
+As suggested in the assignment description, we started with the heartbeat trigger already built into the device triggers. This code took a great deal of digestion and comprehension power to truly understand how the heartbeat trigger was working. For example, the persistence of the \textit{phase} variable in the \textit{struct heartbeat\_data} by maintaining the overarching \textit{struct led\_classdev \*led\_cdev} initialized in \textit{heartbeat\_trig\_activate} function was very non-apparent and took a lot of research to convince us of its use. As a result of this comprehension block, there was a period of time where we wished to hard-code the light flashing for this assignment. We quickly realized that a simple "HELLO" message would require roughly 65 different \textit{case} statements, so we ruled that out. \\
+Our resultant algorithm to complete this involved simply treating any such symbol, whether it be a dot, dash, inter-character space, inter-letter space, inter-word space, or end-of-transmission space as a series of on and offs for which the program could simply determine if the LED should be on or off. The program takes in the input message (which is decided by us for this assignment), runs it through a conversion function to produce a large binary string, and iterates through that string on repeat to output the correct brightness for the LED. \\
+To ensure timing is correct, we have a \textit{period} predefined with a user-defined \textit{speed} coefficient to alter the delay of each time-unit. One can enter the speed as an integer from one (default) to four to increase the rate of transmission of the message. Entering anything greater than 4 will do modular arithmetic to get it within that range. We take input by creating a file similar to the \textit{invert} attribute in the heartbeat trigger, and you write to that file to alter the speed. 
+
+\subsection{How did you ensure your solution was correct? Testing details, for instance.}
+To test our solution we compiled our new ledtrig-morse.c code along with the rest of the kernel to create an executable ledtrig-morse.o file, and copied our newly created kernel8 image to the micro-SD card that holds the operating system for the Raspberry Pi. To ensure the Pi was working as-expected, we started by running \textit{echo heartbeat $>$ /sys/class/leds/led0/trigger} to create the heartbeat on the green LED. Once this was working, we'd run \textit{echo morse $>$ /sys/class/leds/led0/trigger} to see our morse code blink on the green LED. While we do not read morse code fluently, we could tell it was transmitting the same message repeatedly at the desired intervals and the code seems to be aligned with our "HELLO" message. After that, we'd run \textit{ls /sys/class/leds/led0} to find our newly created speed file, and run \textit{echo x $>$ /sys/class/leds/led0/speed} to alter our speed, where x is between one and four. If the speed was faster as we increased, we would call that a success. We'd verify our speed was actually stored by running \textit{cat /sys/class/leds/led0/speed}. 
+
+\subsection{What did you learn?}
+    We learned a lot about the implementation of triggers on rasberry pi, embedded programming, and devices and drivers and their related I/O. We also learned how to interface with an external device like a rasberry pi via the serial connections and GPIO ports, and installing operating systems on them. This assignment was challenging because it required us to have a good understanding of how the current triggers work as well as get the raspberry pi functioning regardless of our changes. We also learned how to use the virtual machine much better and gained an appreciation for its versatility. 
+
+\subsection{Steps for Evaluation}
+How should the TA evaluate your work? Provide detailed steps to prove correctness.\\
+Assuming the evaluator has a vanilla raspbian-stretch-lite SD card with a properly configured config.txt,
+\begin{itemize}
+
+\item Clone the raspberry pi Linux repo with: 
+\textit{git clone https://github.com/raspberrypi/linux.git}
+
+\item Ensure you're on version 4.14.y with: 
+\textit{git branch}
+
+\item Add ledtrig-morse.c to \textit{linux/drivers/leds/trigger/}
+
+\item Add \textit{config LEDS\_TRIGGER\_MORSE} \\
+        \textit{default y} \\ 
+        \textit{tristate "LED Morse Trigger"} \\
+        \textit{depends on LEDS\_TRIGGERS} \\ to \\ \textit{linux/drivers/leds/trigger/Kconfig}
+        
+\item Add \textit{obj-\$(CONFIG\_LEDS\_TRIGGER\_MORSE)        += ledtrig-morse.o} \\
+to \textit{linux/drivers/leds/Makefile}
+
+\item Set the kernel to kernel8 with:
+\textit{KERNEL=kernel8}
+
+\item Cross-compile the kernel for the Raspberry Pi target with:
+\textit{make -j4 ARCH=arm64 CROSS\_COMPILE=aarch64-linux-gnu- bcmrpi3\_defconfig} and 
+\textit{make -j4 ARCH=arm64 CROSS\_COMPILE=aarch64-linux-gnu- all}
+
+\item Ensure a ledtrig-morse.o is created in \textit{linux/drivers/leds/trigger/}
+
+\item Copy \textit{linux/arch/arm64/boot/Image} to the boot partition of the SD card, named as "kernel8.img"
+
+\item Eject the SD card, boot up the Raspberry Pi with the SD card, login as root.
+
+\item Run \textit{echo echo morse $>$ /sys/class/leds/led0/trigger} to begin the morse transmission. 
+
+\item Ensure the green LED is blinking a consistent "HELLO" message 
+
+\item Run \textit{echo x $>$ /sys/class/leds/led0/speed} four times with x = 1, 2, 3, and 4. Document the transmission rate change. 
+
+\item Done!
+\end{itemize}
+
+\section*{Work Log}
+Ben and Burton started configuring the Raspberry Pi and SD card on Tuesday 11/6. Ben finished that work on Wednesday 11/7. Ben started writing ledtrig-morse.c from 11/7 - 11/9. Kyle and Ben worked on ledtrig-morse.c on 11/11 and 11/12. Kyle and Ben finished ledtrig-morse.c on 11/13 and Kyle tested the solution on the Raspberry Pi. Burton and Ben finished the write-up on 11/13. 
+
+
+%% This file was generated by the script latex-git-log 
+\pagebreak
+\section*{Commit Log}
+\begin{tabular}{lp{12cm}}
+  \label{tabular:legend:git-log}
+  \textbf{acronym} & \textbf{meaning} \\
+  V & \texttt{version} \\
+  tag & \texttt{git tag} \\
+  MF & Number of \texttt{modified files}. \\
+  AL & Number of \texttt{added lines}. \\
+  DL & Number of \texttt{deleted lines}. \\
+\end{tabular}
+
+\bigskip
+
+%\iflanguage{ngerman}{\shorthandoff{"}}{}
+\begin{longtable}{|rllp{6cm}rrr|}
+\hline \multicolumn{1}{|c}{\textbf{V}} & \multicolumn{1}{c}{\textbf{tag}}
+& \multicolumn{1}{c}{\textbf{date}}
+& \multicolumn{1}{c}{\textbf{commit message}} & \multicolumn{1}{c}{\textbf{MF}}
+& \multicolumn{1}{c}{\textbf{AL}} & \multicolumn{1}{c|}{\textbf{DL}} \\ \hline
+\endhead
+
+%\hline \multicolumn{7}{|r|}{\longtableendfoot} \\ \hline
+\endfoot
+
+\hline% \hline
+\endlastfoot
+
+\hline 1 &  & 2018-11-13 & added patch & 1 & 50006 & 0 \\
+\hline 2 &  & 2018-11-13 & Update ledtrig-morse.c & 1 & 114 & 117 \\
+\hline 3 &  & 2018-11-13 & Create ledtrig-morse.c & 1 & 307 & 0 \\
+
+\end{longtable}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{singlespace}
+\end{document}
