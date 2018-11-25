@@ -228,7 +228,7 @@ void* inserter(void* ptr) {
 				state.counter++;
 				if(state.counter == 3) {
 					state.reset = true;
-					cout << "Resrouce at capacity" << endl;
+					cout << "Resource at capacity" << endl;
 				}
 				insertNow = true;
 			}
