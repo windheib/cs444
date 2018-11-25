@@ -1,290 +1,333 @@
+/*********************************************************
+ ** Concurrency 3 - Operating Systems II - Kyson Montague
+ **	Written by Ben Windheim, Kyle Baldes, Burton Jaursch
+ ** 25 November 2018
+*********************************************************/
 #include <iostream>
 #include <cstdlib>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 
+#define MAX_NUM 100
 #define NUM_SEARCHERS 3
-#define SLEEPYTIME_SEARCH 2
-#define SLEEPYTIME_INSERT 4
-#define SLEEPYTIME_DELETE 5
+#define PRINT_INTERVAL 2
 
 using namespace std;
-
-// global linked list
-
-pthread_mutex_t searcherLock[NUM_SEARCHERS];
-pthread_mutex_t inserterLock;
-pthread_mutex_t deleterLock;
-pthread_mutex_t outputLock;
-
-int flag;
 
 struct Node {
 	int num; 
 	struct Node *next;
-	struct Node *prev;
+};
+
+struct State {
+	int counter;	// keeps track of how many operators are using the resource
+	bool hasDeleter;// keeps track if there's a deleter running
+	bool reset;		// true if resource at capacity, false when emptied and < 3
 };
 
 struct Resource {
 	struct Node* listHead;
 	struct Node* listTail;
 	int sizeOfList;
-	bool isFull;
-	int counter; // 0-3
-	bool hasDeleter;
-	bool hasInserter;
 };
 
+pthread_mutex_t resourceLock;
+pthread_mutex_t stateLock;
 
+struct State state;
+
+/*********************************************************
+ ** Function - helper functions
+ **	Description - development ease
+*********************************************************/
+void randomSleep() {
+	usleep(rand() % 10000);	// microseconds, so up to 10 milliseconds
+}
+void lockState() {
+	pthread_mutex_lock(&stateLock);
+}
+void unlockState() {
+	pthread_mutex_unlock(&stateLock);
+}
+void lockResource() {
+	pthread_mutex_lock(&resourceLock);
+}
+void unlockResource() {
+	pthread_mutex_unlock(&resourceLock);
+}
+
+/*********************************************************
+ ** Function - printList
+ **	Description - prints the resource (linked list)
+*********************************************************/
+void printList(struct Resource* resource) {
+	// print the list
+	struct Node* temp = NULL;
+	lockResource();
+	temp = resource->listHead;
+	cout << "          LIST SIZE: " << resource->sizeOfList << " --- ";
+	while(temp != NULL) {
+		cout << temp->num << ", " ;
+		temp = temp->next;
+	}
+	cout << endl;
+	unlockResource();
+}
+
+/*********************************************************
+ ** Function - insert
+ **	Description - inserts an item at the end of the list
+*********************************************************/
+void insert(struct Resource* resource, int numToInsert) {
+	cout << "Inserting: " << numToInsert << "   -    " << state.counter << " running threads" << endl;
+
+	struct Node* newNode = new struct Node;
+	newNode->num = numToInsert;
+	newNode->next = NULL;
+	if(resource->listHead == NULL) {	// add at beginning, set head
+		resource->listHead = newNode;
+		resource->listTail = newNode;
+	} else {							// add at end
+		resource->listTail->next = newNode;
+		resource->listTail = newNode;
+	}
+	resource->sizeOfList++;
+	cout << "	Inserted: " << numToInsert << " at end of list" << endl;
+}
+
+/*********************************************************
+ ** Function - search
+ **	Description - looks for a value in the list
+*********************************************************/
+void search(struct Resource* resource, int numToSearch) {
+	cout << "Searching for: " << numToSearch << "   -    " << state.counter << " running threads" << endl;
+
+	struct Node* listNode = resource->listHead;
+	while (listNode != NULL) {
+		if(listNode->num == numToSearch) {	// found it!
+			cout << "       found!: " << numToSearch << endl;
+			return;
+		}
+		listNode = listNode->next;	// iterate
+	}
+	cout << "    not found: " << numToSearch << endl;
+}
+
+/*********************************************************
+ ** Function - remove
+ **	Description - removes the item in the list at indexToDelete
+*********************************************************/
+void remove(struct Resource* resource, int indexToDelete) {
+	cout << "Deleting index: " << indexToDelete << "   -    " << state.counter << " running threads" << endl;
+
+	if (resource->listHead == NULL || indexToDelete < 0 || resource->sizeOfList <= indexToDelete) {
+		// don't go past the end of list
+		cout << "WARNING - attempted to remove index past end of list: " << indexToDelete << endl;
+		return;
+	}
+	int num = -1;
+	struct Node* current = resource->listHead;
+	int i = indexToDelete;
+	// advance to node prior to one to delete
+	while (--i > 0) {
+		current = current->next;
+	}
+	// if we happen to be at the head, special-case
+	if (current == resource->listHead) {
+		resource->listHead = current->next;
+		num = current->num;
+		delete current;
+	} else {
+		// delete the next node
+		struct Node* temp = current->next->next;
+		num = current->next->num;
+		delete current->next;
+		current->next = temp;
+		if (current->next == NULL) {
+			resource->listTail = current;
+		}
+	}
+	resource->sizeOfList = resource->sizeOfList - 1;
+
+	cout << "	Deleted index: " << indexToDelete << " with num: " << num << endl;
+}
+
+/*********************************************************
+ ** Function - printer
+ **	Description - shows how many threads are running at a consistent interval
+*********************************************************/
+void* printer(void* ptr) {
+	struct Resource* resource = (struct Resource*) ptr;
+	while(true) {
+		lockState();
+		int counter = state.counter;
+		unlockState();
+		printList(resource);
+		sleep(PRINT_INTERVAL);
+	}
+}
+
+/*********************************************************
+ ** Function - searcher
+ **	Description - consistently looping function to search for a value in the resource. Up to three can be running concurrently
+*********************************************************/
 void* searcher(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
 
-	while(true){
-		if(pthread_mutex_trylock(&deleterLock)) {	// check if deleter is going
-			continue;
-		}
-		pthread_mutex_unlock(&deleterLock);	// immediately give up lock
-
-		int lockNum;
-		int numToSearch = rand() % 100;
-
-		if(resource->counter == 0) {		// reset isFull
-			if(flag == 0){
-				pthread_mutex_lock(&outputLock);
-				cout << "... resource empty ..." << endl;
-				pthread_mutex_unlock(&outputLock);
-				flag = 1;
+	while (true) {
+		bool searchNow = false;
+		lockState();
+		if (state.counter < 3 && !state.hasDeleter) { 	// checks if there's room for a searcher
+			if(state.counter == 0) {
+				if(state.reset)
+					cout << "			Resource emptied" << endl;
+				state.reset = false;
 			}
-			resource->isFull = false;
-		}
-
-		if(/*!resource->hasDeleter && */!resource->isFull) {	
-			for(int i = 0; i < NUM_SEARCHERS; i++) {
-				if(!pthread_mutex_trylock(&searcherLock[i])){	// try to get one of three locks. One should be available if we get to here
-					lockNum = i;
-					resource->counter++;
-					break;
+			if(!state.reset){
+				state.counter++;
+				if(state.counter == 3) {
+					cout << "			Resource at capacity" << endl;
+					state.reset = true;
 				}
+				searchNow = true;
 			}
-
-			pthread_mutex_lock(&outputLock);
-			cout << "Searching for: " << numToSearch << endl;
-			pthread_mutex_unlock(&outputLock);
-			if(resource->counter == 3){
-				pthread_mutex_lock(&outputLock);
-				cout << "*** !RESOURCE FULL! ***" << endl;
-				pthread_mutex_unlock(&outputLock);				
-				resource->isFull = true;
-			}
-
-			struct Node* listNode = resource->listHead;
-			while(true) {
-				if(listNode == NULL) {	// end of list, no dice
-					pthread_mutex_lock(&outputLock);
-					cout << "    " << numToSearch << " not found" << endl;
-					pthread_mutex_unlock(&outputLock);
-					break;
-				} else if(listNode->num == numToSearch) {	// found it!
-					pthread_mutex_lock(&outputLock);
-					cout << "    Found number: " << numToSearch << endl;
-					pthread_mutex_unlock(&outputLock);
-					break;
-				}
-				listNode = listNode->next;	// iterate
-			}
-
-			sleep(SLEEPYTIME_SEARCH);	// sleep
-			// pthread_mutex_unlock(&deleterLock);
-			pthread_mutex_unlock(&searcherLock[lockNum]);	// unlock specific mutex
-			resource->counter--;	// count down. when counter hits 0, the isFull flag resets
-			flag = 0;
 		}
+		unlockState();
+		if (searchNow) {
+			int numToSearch = rand() % MAX_NUM;	// random number to look for
+			
+			lockResource();
+			search(resource, numToSearch);	// lock state and search
+			unlockResource();
+			
+			lockState();
+			state.counter--;
+			unlockState();
+		}
+
+		randomSleep();	// chill for a minute
 	}
 }
 
+/*********************************************************
+ ** Function - inserter
+ **	Description - insertion thread. Only one, 
+*********************************************************/
 void* inserter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
 
-	while(true) {
-		//sleep(1);
-		if(pthread_mutex_trylock(&deleterLock)) {	// check for deleter
-			// cout << "Deleter going" << endl;
-			continue;
+	while (true) {
+		bool insertNow = false;
+		lockState();
+		if (state.counter < 3 && !state.hasDeleter) { 	// check if there's room
+			if(state.counter == 0) {
+				state.reset = false;
+			}
+			if(!state.reset){
+				state.counter++;
+				if(state.counter == 3) {
+					state.reset = true;
+					cout << "Resource at capacity" << endl;
+				}
+				insertNow = true;
+			}
 		}
-		pthread_mutex_unlock(&deleterLock);	//immediately give it up if none
+		unlockState();
+		if (insertNow) {
+			int numToInsert = rand() % MAX_NUM;	// random number to insert
 
-		int numToInsert = rand() % 100;
-		if(resource->counter == 0){
-			if(flag == 0){
-				pthread_mutex_lock(&outputLock);
-				cout << "... resource empty ..." << endl;
-				pthread_mutex_unlock(&outputLock);
-				flag = 1;
-			}
-			resource->isFull = false;
-		}
-
-		if(/*!resource->hasDeleter && */!resource->isFull/* && !resource->hasInserter*/) {
-			pthread_mutex_lock(&inserterLock);
-
-			pthread_mutex_lock(&outputLock);
-			cout << "Inserting: " << numToInsert << endl;
-			pthread_mutex_unlock(&outputLock);
-
-			resource->hasInserter = true;
-
-			resource->counter++;
-			if(resource->counter == 3){			// set isFull
-				pthread_mutex_lock(&outputLock);
-				cout << "*** !RESOURCE FULL! ***" << endl;
-				pthread_mutex_unlock(&outputLock);				
-				resource->isFull = true;
-			}
-
-			struct Node* newNode = new struct Node;
-			newNode->num = numToInsert;
-			newNode->next = NULL;
-			if(resource->listHead == NULL) {
-				resource->listHead = newNode;
-				resource->listTail = newNode;
-			} else {
-				resource->listTail->next = newNode;
-				resource->listTail = newNode;
-			}
-
-			pthread_mutex_lock(&outputLock);
-			cout << "    " << numToInsert << " inserted" << endl;
-			pthread_mutex_unlock(&outputLock);
-			resource->sizeOfList++;
+			lockResource();
+			insert(resource, numToInsert);	// insert at end of list
+			unlockResource();	
+			
+			lockState();
+			state.counter--;
+			unlockState();
 		}
 
-		sleep(SLEEPYTIME_INSERT);
-		//pthread_mutex_unlock(&deleterLock);
-		resource->counter--;
-		resource->hasInserter = false;
-		pthread_mutex_unlock(&inserterLock);
-		flag = 0;
-
+		randomSleep();
 	}
 }
 
+/*********************************************************
+ ** Function - deleter
+ **	Description - deletion thread. mutually exclusive with all other threads, only one can run. 
+*********************************************************/
 void* deleter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
-	while(true) {
-		if(pthread_mutex_trylock(&deleterLock)){
-			continue;
+
+	while (true) {
+		bool deleteNow = false;
+		lockState();
+		if (state.counter == 0) {	// waits for resource to be empty
+			state.reset = false;
+			state.counter++;
+			state.hasDeleter = true;	// set flag
+			deleteNow = true;
 		}
-		int indexToDelete;
-		if(resource->counter == 0){
-			if(flag == 0){
-				// pthread_mutex_lock(&outputLock);
-				// cout << "... resource empty ..." << endl;
-				// pthread_mutex_unlock(&outputLock);
+		unlockState();
+		if (deleteNow) {
+			lockResource();
+			if (resource->sizeOfList > 0) {
+				int indexToDelete = rand() % resource->sizeOfList;	// get a random index
+				remove(resource, indexToDelete);	// delete it
 			}
-			resource->isFull = false;
-		}
-		if(resource->sizeOfList > 0){
-			pthread_mutex_lock(&outputLock);
-			cout << "           Size: " << resource->sizeOfList << endl;
-			indexToDelete = rand() % resource->sizeOfList;
-			cout << "           index: " << indexToDelete << endl;
-			pthread_mutex_unlock(&outputLock);
-			resource->hasDeleter = true; // add deleter so other threads stop
-			pthread_mutex_lock(&outputLock);
-			cout << "Deleting index: " << indexToDelete << endl;
-			pthread_mutex_unlock(&outputLock);
-			resource->counter++;
-			//struct Node* cur = new struct Node;
-			//struct Node* prev = new struct Node;
-			//cur = resource->listHead;
-			//for(int i = 1; i < indexToDelete; i++) {
-			///	prev = cur;
-			//	cur = cur->next;
-			//}
-			//prev->next = cur->next;
-
-			struct Node* temp = resource->listHead;
-			if(indexToDelete == 0) {
-				resource->listHead = temp->next;
-				free(temp);
-			} else {
-				for(int i = 0; temp != NULL && i < indexToDelete-1; i++) {
-					temp = temp->next;
-				}
-				struct Node* nxt = temp->next->next;
-				free(temp->next);
-				temp->next = nxt;
-			}
-			resource->sizeOfList--;
-		} else {
-			if(flag == 0){
-				pthread_mutex_lock(&outputLock);
-				cout << "    Nothing to delete" << endl;
-				pthread_mutex_unlock(&outputLock);
-				flag = 1;
-			}
-			pthread_mutex_unlock(&deleterLock);
-			continue;
+			unlockResource();
+			
+			lockState();
+			state.counter--;
+			state.hasDeleter = false;
+			unlockState();
 		}
 
-		sleep(SLEEPYTIME_DELETE);
-		pthread_mutex_lock(&outputLock);
-		cout << "Deleted index: " << indexToDelete << endl;
-		pthread_mutex_unlock(&outputLock);
-
-		struct Node* temp = new struct Node;
-		temp = resource->listHead;
-		pthread_mutex_lock(&outputLock);
-		while(temp != NULL) {
-			cout << temp->num << ", " ;
-			temp = temp->next;
-		}
-		cout << endl;
-		pthread_mutex_unlock(&outputLock);
-
-		pthread_mutex_unlock(&deleterLock);
-		flag = 0;
-		resource->hasDeleter = false;
+		randomSleep();
 	}
 }
 
+/*********************************************************
+ ** Function - main
+ **	Description - initializes threads and data structures for running the program
+*********************************************************/
 int main(int argc, char* argv[]) {
+	srand(time(NULL));	// seed random
+
+	// initialize resource
 	struct Resource resource;
 	resource.sizeOfList = 0;
-	resource.isFull = false;
-	resource.hasInserter = false;
-	resource.hasDeleter = false;
-	resource.counter = 0;
 	resource.listHead = NULL;
 	resource.listTail = NULL;
-	flag = 0;
 
-	srand(time(NULL));
+	// init state, no need to lock since this is the only thread at this point
+	state.hasDeleter = false;
+	state.counter = 0;
+	state.reset = false;
 
+	// initialize locks
+	pthread_mutex_init(&resourceLock, NULL);
+	pthread_mutex_init(&stateLock, NULL);
+
+	// initialize threads, 3 searchers, 1 deleter, 1 inserter, 1 helper printer
 	pthread_t searcherThread[NUM_SEARCHERS];
 	pthread_t deleterThread;
-	pthread_t inserterThread[2];
+	pthread_t printerThread;
+	pthread_t inserterThread;
 
-	pthread_mutex_init(&inserterLock, NULL);
-	pthread_mutex_init(&deleterLock, NULL);
-	pthread_mutex_init(&outputLock, NULL);
-
-	pthread_create(&inserterThread[0], NULL, inserter, &resource);
-	pthread_create(&inserterThread[1], NULL, inserter, &resource);
-
+	// begin threads
+	pthread_create(&printerThread, NULL, printer, &resource);
+	pthread_create(&inserterThread, NULL, inserter, &resource);
 	for(int i = 0; i < NUM_SEARCHERS; i++) {
-		pthread_mutex_init(&searcherLock[i], NULL);
 		pthread_create(&searcherThread[i], NULL, searcher, &resource);
 	}
-
 	pthread_create(&deleterThread, NULL, deleter, &resource);
 
+	// join  threads
 	for(int i = 0; i < NUM_SEARCHERS; i++) {
 		pthread_join(searcherThread[i], NULL);
 	}
-	pthread_join(inserterThread[0], NULL);
-	pthread_join(inserterThread[1], NULL);
+	pthread_join(inserterThread, NULL);
 	pthread_join(deleterThread, NULL);
+	pthread_join(printerThread, NULL);
 
 	return 0;
 }
