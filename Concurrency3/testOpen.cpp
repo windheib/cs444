@@ -11,7 +11,7 @@
 
 using namespace std;
 
-int int main(int argc, char const *argv[]) {
+int main(int argc, char const *argv[]) {
   cout << "------ testOpen BEGIN ------" << endl;
   cout << ">> testing capabilities for algorithm to introduce third operator on resource" << endl;
   srand(time(NULL));	// seed random
