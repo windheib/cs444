@@ -122,7 +122,6 @@ void remove(struct Resource* resource, int indexToDelete) {
 
 	cout << "	Deleted index: " << indexToDelete << " with num: " << num << endl;
 }
-
 /*********************************************************
  ** Function - printer
  **	Description - shows how many threads are running at a consistent interval
@@ -246,7 +245,7 @@ void* deleter(void* ptr) {
 				remove(resource, indexToDelete);	// delete it
 			}
 			unlockResource();
-			
+
 			lockState();
 			state.counter--;
 			state.hasDeleter = false;
