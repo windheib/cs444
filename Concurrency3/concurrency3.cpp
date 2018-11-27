@@ -3,39 +3,9 @@
  **	Written by Ben Windheim, Kyle Baldes, Burton Jaursch
  ** 25 November 2018
 *********************************************************/
-#include <iostream>
-#include <cstdlib>
-#include <unistd.h>
-#include <pthread.h>
-#include <time.h>
-
-#define MAX_NUM 100
-#define NUM_SEARCHERS 3
-#define PRINT_INTERVAL 2
+#include "concurrency3.h"
 
 using namespace std;
-
-struct Node {
-	int num;
-	struct Node *next;
-};
-
-struct State {
-	int counter;	// keeps track of how many operators are using the resource
-	bool hasDeleter;// keeps track if there's a deleter running
-	bool reset;		// true if resource at capacity, false when emptied and < 3
-};
-
-struct Resource {
-	struct Node* listHead;
-	struct Node* listTail;
-	int sizeOfList;
-};
-
-pthread_mutex_t resourceLock;
-pthread_mutex_t stateLock;
-
-struct State state;
 
 /*********************************************************
  ** Function - helper functions
@@ -152,7 +122,6 @@ void remove(struct Resource* resource, int indexToDelete) {
 
 	cout << "	Deleted index: " << indexToDelete << " with num: " << num << endl;
 }
-
 /*********************************************************
  ** Function - printer
  **	Description - shows how many threads are running at a consistent interval
@@ -196,11 +165,10 @@ void* searcher(void* ptr) {
 		unlockState();
 		if (searchNow) {
 			int numToSearch = rand() % MAX_NUM;	// random number to look for
-
 			lockResource();
 			search(resource, numToSearch);	// lock state and search
 			unlockResource();
-
+			
 			lockState();
 			state.counter--;
 			unlockState();
@@ -212,7 +180,7 @@ void* searcher(void* ptr) {
 
 /*********************************************************
  ** Function - inserter
- **	Description - insertion thread. Only one,
+ **	Description - insertion thread. Only one, 
 *********************************************************/
 void* inserter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
@@ -239,8 +207,8 @@ void* inserter(void* ptr) {
 
 			lockResource();
 			insert(resource, numToInsert);	// insert at end of list
-			unlockResource();
-
+			unlockResource();	
+			
 			lockState();
 			state.counter--;
 			unlockState();
@@ -252,7 +220,7 @@ void* inserter(void* ptr) {
 
 /*********************************************************
  ** Function - deleter
- **	Description - deletion thread. mutually exclusive with all other threads, only one can run.
+ **	Description - deletion thread. mutually exclusive with all other threads, only one can run. 
 *********************************************************/
 void* deleter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
