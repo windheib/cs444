@@ -12,8 +12,8 @@
 using namespace std;
 
 int int main(int argc, char const *argv[]) {
-  cout << "------ testOpen BEGIN ------" << endl;
-  cout << ">> testing capabilities for algorithm to introduce third operator on resource" << endl;
+  cout << "------ testLocked BEGIN ------" << endl;
+  cout << ">> testing capabilities for algorithm to reject a fourth operator on resource" << endl;
   srand(time(NULL));	// seed random
 
   // initialize resource
@@ -32,32 +32,32 @@ int int main(int argc, char const *argv[]) {
   pthread_mutex_init(&stateLock, NULL);
 
 
-  // initialize threads, 3 searchers, 1 helper printer
-  pthread_t searcherThread[NUM_SEARCHERS];
+  // initialize threads, 4 searchers, 1 helper printer
+  pthread_t searcherThread[NUM_SEARCHERS + 1];
   pthread_t printerThread;
 
-  cout << ">> Initializing two searchers & printer thread" << endl;
+  cout << ">> Initializing three searchers & printer thread" << endl;
   // begin threads
   pthread_create(&printerThread, NULL, printer, &resource);
-  for(int i = 0; i < NUM_SEARCHERS - 1; i++) {
+  for(int i = 0; i < NUM_SEARCHERS; i++) {
 		pthread_create(&searcherThread[i], NULL, searcher, &resource);
 	}
 
   std::cout << ">> Asserting that searcher creation is successful" << '\n';
-  assert(state.counter == 2);
+  assert(state.counter == 3);
   std::cout << ">> SUCCESS!" << '\n\n';
 
   std::cout << ">> Sleeping to allow search threads to run" << '\n\n';
   randomSleep();
 
-  std::cout << ">> Attempting to start third searcher" << '\n';
-  pthread_create(&searcherThread[2], NULL, searcher, &resource);
+  std::cout << ">> Attempting to start fourth searcher" << '\n';
+  pthread_create(&searcherThread[i], NULL, searcher, &resource);
 
-  std::cout << ">> Asserting that third thread can access resource" << '\n';
+  std::cout << ">> Asserting that the fourth searcher was not allowed to access the resource" << '\n';
   assert(state.counter == 3);
   std::cout << ">> SUCCESS!" << '\n\n';
 
 
-  std::cout << "------ testOpen SUCCESSFUL ------" << '\n\n\n';
-  exit(0);
+  std::cout << "------ testLocked SUCCESSFUL ------" << '\n\n\n';
+  exit(0); //kills child threads as well
 }
