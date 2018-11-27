@@ -3,39 +3,9 @@
  **	Written by Ben Windheim, Kyle Baldes, Burton Jaursch
  ** 25 November 2018
 *********************************************************/
-#include <iostream>
-#include <cstdlib>
-#include <unistd.h>
-#include <pthread.h>
-#include <time.h>
-
-#define MAX_NUM 100
-#define NUM_SEARCHERS 3
-#define PRINT_INTERVAL 2
+#include "concurrency3.h"
 
 using namespace std;
-
-struct Node {
-	int num; 
-	struct Node *next;
-};
-
-struct State {
-	int counter;	// keeps track of how many operators are using the resource
-	bool hasDeleter;// keeps track if there's a deleter running
-	bool reset;		// true if resource at capacity, false when emptied and < 3
-};
-
-struct Resource {
-	struct Node* listHead;
-	struct Node* listTail;
-	int sizeOfList;
-};
-
-pthread_mutex_t resourceLock;
-pthread_mutex_t stateLock;
-
-struct State state;
 
 /*********************************************************
  ** Function - helper functions
