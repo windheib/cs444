@@ -5,7 +5,7 @@
 #include <time.h>
 
 #define MAX_NUM 100
-#define NUM_SEARCHERS 3
+#define NUM_THREADS 3
 #define PRINT_INTERVAL 2
 
 
@@ -17,6 +17,7 @@ struct Node {
 struct State {
 	int counter;	// keeps track of how many operators are using the resource
 	bool hasDeleter;// keeps track if there's a deleter running
+	bool hasInserter;
 	bool reset;		// true if resource at capacity, false when emptied and < 3
 };
 
