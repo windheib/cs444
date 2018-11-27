@@ -3,39 +3,9 @@
  **	Written by Ben Windheim, Kyle Baldes, Burton Jaursch
  ** 25 November 2018
 *********************************************************/
-#include <iostream>
-#include <cstdlib>
-#include <unistd.h>
-#include <pthread.h>
-#include <time.h>
-
-#define MAX_NUM 100
-#define NUM_SEARCHERS 3
-#define PRINT_INTERVAL 2
+#include "concurrency3.h"
 
 using namespace std;
-
-struct Node {
-	int num;
-	struct Node *next;
-};
-
-struct State {
-	int counter;	// keeps track of how many operators are using the resource
-	bool hasDeleter;// keeps track if there's a deleter running
-	bool reset;		// true if resource at capacity, false when emptied and < 3
-};
-
-struct Resource {
-	struct Node* listHead;
-	struct Node* listTail;
-	int sizeOfList;
-};
-
-pthread_mutex_t resourceLock;
-pthread_mutex_t stateLock;
-
-struct State state;
 
 /*********************************************************
  ** Function - helper functions
@@ -152,7 +122,6 @@ void remove(struct Resource* resource, int indexToDelete) {
 
 	cout << "	Deleted index: " << indexToDelete << " with num: " << num << endl;
 }
-
 /*********************************************************
  ** Function - printer
  **	Description - shows how many threads are running at a consistent interval
@@ -196,11 +165,11 @@ void* searcher(void* ptr) {
 		unlockState();
 		if (searchNow) {
 			int numToSearch = rand() % MAX_NUM;	// random number to look for
-
-			lockResource();
+			
+			// lockResource();
 			search(resource, numToSearch);	// lock state and search
-			unlockResource();
-
+			// unlockResource();
+			
 			lockState();
 			state.counter--;
 			unlockState();
@@ -212,7 +181,7 @@ void* searcher(void* ptr) {
 
 /*********************************************************
  ** Function - inserter
- **	Description - insertion thread. Only one,
+ **	Description - insertion thread. Only one, 
 *********************************************************/
 void* inserter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
@@ -220,7 +189,7 @@ void* inserter(void* ptr) {
 	while (true) {
 		bool insertNow = false;
 		lockState();
-		if (state.counter < 3 && !state.hasDeleter) { 	// check if there's room
+		if (state.counter < 3 && !state.hasDeleter && !state.hasInserter) { 	// check if there's room
 			if(state.counter == 0) {
 				state.reset = false;
 			}
@@ -230,6 +199,7 @@ void* inserter(void* ptr) {
 					state.reset = true;
 					cout << "Resource at capacity" << endl;
 				}
+				state.hasInserter = true;
 				insertNow = true;
 			}
 		}
@@ -237,12 +207,13 @@ void* inserter(void* ptr) {
 		if (insertNow) {
 			int numToInsert = rand() % MAX_NUM;	// random number to insert
 
-			lockResource();
+			// lockResource();
 			insert(resource, numToInsert);	// insert at end of list
-			unlockResource();
-
+			// unlockResource();	
+			
 			lockState();
 			state.counter--;
+			state.hasInserter = false;
 			unlockState();
 		}
 
@@ -252,7 +223,7 @@ void* inserter(void* ptr) {
 
 /*********************************************************
  ** Function - deleter
- **	Description - deletion thread. mutually exclusive with all other threads, only one can run.
+ **	Description - deletion thread. mutually exclusive with all other threads, only one can run. 
 *********************************************************/
 void* deleter(void* ptr) {
 	struct Resource* resource = (struct Resource*) ptr;
@@ -260,7 +231,7 @@ void* deleter(void* ptr) {
 	while (true) {
 		bool deleteNow = false;
 		lockState();
-		if (state.counter == 0) {	// waits for resource to be empty
+		if (state.counter == 0 && !state.hasDeleter) {	// waits for resource to be empty
 			state.reset = false;
 			state.counter++;
 			state.hasDeleter = true;	// set flag
@@ -300,6 +271,7 @@ int main(int argc, char* argv[]) {
 
 	// init state, no need to lock since this is the only thread at this point
 	state.hasDeleter = false;
+	state.hasInserter = false;
 	state.counter = 0;
 	state.reset = false;
 
@@ -307,26 +279,26 @@ int main(int argc, char* argv[]) {
 	pthread_mutex_init(&resourceLock, NULL);
 	pthread_mutex_init(&stateLock, NULL);
 
-	// initialize threads, 3 searchers, 1 deleter, 1 inserter, 1 helper printer
-	pthread_t searcherThread[NUM_SEARCHERS];
-	pthread_t deleterThread;
+	// initialize threads, 3 searchers, 3 deleters, 3 inserters, 1 helper printer
 	pthread_t printerThread;
-	pthread_t inserterThread;
+	pthread_t searcherThread[NUM_THREADS];
+	pthread_t deleterThread[NUM_THREADS];
+	pthread_t inserterThread[NUM_THREADS];
 
 	// begin threads
 	pthread_create(&printerThread, NULL, printer, &resource);
-	pthread_create(&inserterThread, NULL, inserter, &resource);
-	for(int i = 0; i < NUM_SEARCHERS; i++) {
+	for(int i = 0; i < NUM_THREADS; i++) {
+		pthread_create(&inserterThread[i], NULL, inserter, &resource);
 		pthread_create(&searcherThread[i], NULL, searcher, &resource);
+		pthread_create(&deleterThread[i], NULL, deleter, &resource);
 	}
-	pthread_create(&deleterThread, NULL, deleter, &resource);
 
 	// join  threads
-	for(int i = 0; i < NUM_SEARCHERS; i++) {
+	for(int i = 0; i < NUM_THREADS; i++) {
 		pthread_join(searcherThread[i], NULL);
+		pthread_join(inserterThread[i], NULL);
+		pthread_join(deleterThread[i], NULL);
 	}
-	pthread_join(inserterThread, NULL);
-	pthread_join(deleterThread, NULL);
 	pthread_join(printerThread, NULL);
 
 	return 0;
