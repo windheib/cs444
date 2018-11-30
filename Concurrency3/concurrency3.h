@@ -1,7 +1,10 @@
+#ifndef CONCURRENCY3_H
+#define CONCURRENCY3_H
+
 #include <iostream>
 #include <cstdlib>
 #include <unistd.h>
-#include <pthread.h>
+//#include <pthread.h>
 #include <time.h>
 
 #define MAX_NUM 100
@@ -10,7 +13,7 @@
 
 
 struct Node {
-	int num; 
+	int num;
 	struct Node *next;
 };
 
@@ -45,3 +48,5 @@ void* printer(void* ptr);
 void* searcher(void* ptr);
 void* inserter(void* ptr);
 void* deleter(void* ptr);
+
+#endif /* CONCURRENCY3_H */

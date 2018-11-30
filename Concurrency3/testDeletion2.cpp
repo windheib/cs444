@@ -12,8 +12,8 @@
 using namespace std;
 
 int main(int argc, char const *argv[]) {
-  cout << "------ testLocked BEGIN ------" << endl;
-  cout << ">> testing capabilities for algorithm to reject a fourth operator on resource" << endl;
+  cout << "------ testDeletion2 BEGIN ------" << endl;
+  cout << ">> testing capabilities for algorithm to reject another operator on a resource when a deleter has it" << endl;
   srand(time(NULL));	// seed random
 
   // initialize resource
@@ -32,29 +32,29 @@ int main(int argc, char const *argv[]) {
   pthread_mutex_init(&stateLock, NULL);
 
 
-  // initialize threads, 4 searchers, 1 helper printer
-  pthread_t searcherThread[NUM_SEARCHERS + 1];
+  // initialize threads, 1 deleter, 1 inserter, 1 searcher, and 1 helper printer
+  pthread_t deleterThread;
+  pthread_t inserterThread;
+  pthread_t searcherThread;
   pthread_t printerThread;
 
-  cout << ">> Initializing three searchers & printer thread" << endl;
+  cout << ">> Initializing 1 deleter & printer thread" << endl;
   // begin threads
   pthread_create(&printerThread, NULL, printer, &resource);
-  for(int i = 0; i < NUM_SEARCHERS; i++) {
-		pthread_create(&searcherThread[i], NULL, searcher, &resource);
-	}
+  pthread_create(&deleterThread, NULL, deleter, &resource);
 
-  std::cout << ">> Asserting that searcher creation is successful" << '\n';
-  assert(state.counter == 3);
+  std::cout << ">> Asserting that deleter creation is successful" << '\n';
+  assert(state.counter == 1);
   std::cout << ">> SUCCESS!" << '\n\n';
 
-  std::cout << ">> Attempting to start fourth searcher" << '\n';
-  pthread_create(&searcherThread[i], NULL, searcher, &resource);
+  std::cout << ">> Attempting to start searcher" << '\n';
+  pthread_create(&searcherThread, NULL, searcher, &resource);
 
-  std::cout << ">> Asserting that the fourth searcher was not allowed to access the resource" << '\n';
-  assert(state.counter == 3);
+  std::cout << ">> Asserting that the searcher was not allowed to access the resource" << '\n';
+  assert(state.counter == 1);
   std::cout << ">> SUCCESS!" << '\n\n';
 
 
-  std::cout << "------ testLocked SUCCESSFUL ------" << '\n\n\n';
+  std::cout << "------ testDeletion2 SUCCESSFUL ------" << '\n\n\n';
   exit(0); //kills child threads as well
 }

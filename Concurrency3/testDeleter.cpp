@@ -13,7 +13,7 @@ using namespace std;
 
 int main(int argc, char const *argv[]) {
   cout << "------ testDeleter BEGIN ------" << endl;
-  cout << ">> testing capabilities for algorithm to introduce a second deleter on a resource" << endl;
+  cout << ">> testing capabilities for algorithm to reject a second deleter on a resource" << endl;
   srand(time(NULL));	// seed random
 
   // initialize resource
@@ -45,11 +45,8 @@ int main(int argc, char const *argv[]) {
   assert(state.counter == 1);
   std::cout << ">> SUCCESS!" << '\n\n';
 
-  std::cout << ">> Sleeping to allow search thread to run" << '\n\n';
-  randomSleep();
-
   std::cout << ">> Attempting to start second deleter" << '\n';
-  pthread_create(&inserterThread[1], NULL, inserter, &resource);
+  pthread_create(&deleterThread[1], NULL, deleter, &resource);
 
   std::cout << ">> Asserting that the second deleter was not allowed to access the resource" << '\n';
   assert(state.counter == 1);

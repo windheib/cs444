@@ -1,13 +1,5 @@
-#include <iostream>
-#include <cstdlib>
-#include <unistd.h>
-#include <pthread.h>
-#include <time.h>
+#include <assert.h>
 #include "concurrency3.h"
-
-#define MAX_NUM 100
-#define NUM_SEARCHERS 3
-#define PRINT_INTERVAL 2
 
 using namespace std;
 
@@ -28,18 +20,18 @@ int main(int argc, char const *argv[]) {
   state.reset = false;
 
   // initialize locks
-  pthread_mutex_init(&resourceLock, NULL);
-  pthread_mutex_init(&stateLock, NULL);
+  //pthread_mutex_init(&resourceLock, NULL);
+  //pthread_mutex_init(&stateLock, NULL);
 
 
   // initialize threads, 3 searchers, 1 helper printer
-  pthread_t searcherThread[NUM_SEARCHERS];
+  pthread_t searcherThread[NUM_THREADS];
   pthread_t printerThread;
 
   cout << ">> Initializing two searchers & printer thread" << endl;
   // begin threads
   pthread_create(&printerThread, NULL, printer, &resource);
-  for(int i = 0; i < NUM_SEARCHERS - 1; i++) {
+  for(int i = 0; i < NUM_THREADS - 1; i++) {
 		pthread_create(&searcherThread[i], NULL, searcher, &resource);
 	}
 

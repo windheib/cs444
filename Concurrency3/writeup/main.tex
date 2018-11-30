@@ -24,7 +24,7 @@
 \begin{singlespace}
 \begin{titlepage}
     \pagenumbering{gobble}
-        \hfill 
+        \hfill
         \par\vspace{.2in}
         \centering
         \scshape{
@@ -36,14 +36,14 @@
             }
             \large CS444 \par
             \large Fall 2018\par
-            
-            
+
+
             \vfill
             %{\large Created by }\par
             }
             \begin{abstract}
-                This file encompasses the documentation for Concurrency 3 for CS 444.  
-                
+                This file encompasses the documentation for Concurrency 3 for CS 444.
+
             \end{abstract}
 
 
@@ -55,13 +55,13 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section*{Concurrency 3}
- 
+
 \subsection*{Algorithm}
-    Our solution for concurrency 3 chooses to combine both problems 1 and 2 for the extra credit option. The solution uses 9 threads (three searcher threads, three inserter threads, and three deleter threads), plus an additional helper printer thread that does not affect the solution, only the output information. However, the 2 extra inserters and deleters are There are 3 data structures: the "Resource" which contains a linked list and a list size, the "Node" which constitutes one item of the list, and the "State" which contains information about the state of the resource (such as how many operations are working on it and whether or not it needs to be reset). There are 2 mutual exclusion locks (mutexes) which control access to the Resource and the State. The program begins in main(), which initializes the threads, data structures, and mutexes and begins the threads. \\
+    Our solution for concurrency 3 chooses to combine both problems 1 and 2 for the extra credit option. The solution uses 9 threads (three searcher threads, three inserter threads, and three deleter threads), plus an additional helper printer thread that does not affect the solution, only the output information. However, the 2 extra inserters and deleters are there to show that when an inserter or deleter has access to a resource, neither the other two of the same type of operator can also access the resource. There are 3 data structures: the "Resource" which contains a linked list and a list size, the "Node" which constitutes one item of the list, and the "State" which contains information about the state of the resource (such as how many operations are working on it and whether or not it needs to be reset). There are 2 mutual exclusion locks (mutexes) which control access to the Resource and the State. The program begins in main(), which initializes the threads, data structures, and mutexes and begins the threads. \\
     The searcher threads are controlled by void* searcher(). Searcher locks the state of the resource and determines if there is room for a searcher to be added (which is only if there are less than 3 operations running and the "reset" flag is not set). If the "counter" is 0, it resets the "reset" flag and continues on. If the searcher is able to be added, it increments the counter, generates a random number, and iterates through the resource to find the value using void search(). After this completes, it unlocks the resource, decrements the counter, and completes its executing loop with a random sleep interval. \\
     The inserters thread are controlled by void* inserter(). Inserter locks the state and determines if it has the ability to insert by checking the counter, if there's not a deleter, and if there's not already an inserter running. If these pass, then the inserter signals that it is running (so we don't start another), goes through the same logic as the searcher does with the counter and reset flag. If it is able to be added, it increments the counter (determining if the resource is full during), generates a random number, and adds that to the end of the list with void insert(). After this completes, it decrements the counter, increments the list size, unsets the hasInserter flag, and completes its execution with a random sleep interval. \\
-    The deleter threads are controlled by void* deleter(). Deleter locks the state and determines if it has the ability to insert by making sure the counter is 0 and there is not already a deleter running. If these pass, then the deleter signals that it is running (so we don't start any other operations). If it is able to run, it increments the counter, generates a random index in the lsit to remove, then removes it from the list with void remove(). After this completes it decrements the counter and list size, unsets the hasDeleter and reset flag, and completes its execution with a random sleep interval. \\
-    The various locks and logic accompanying this solution should be sufficient to show the three-way categorical exclusion illustrated by the problem statements. The proof of correctness is shown in the next section in addition to our unit tests. 
+    The deleter threads are controlled by void* deleter(). Deleter locks the state and determines if it has the ability to insert by making sure the counter is 0 and there is not already a deleter running (which is just an extra precaution considering the counter would not be at zero if there is a deleter running). If these pass, then the deleter signals that it is running (so we don't start any other operations). If it is able to run, it increments the counter, generates a random index in the list to remove, then removes it from the list with void remove(). After this completes it decrements the counter and list size, unsets the hasDeleter and reset flag, and completes its execution with a random sleep interval. \\
+    The various locks and logic accompanying this solution should be sufficient to show the three-way categorical exclusion illustrated by the problem statements. The proof of correctness is shown in the next section in addition to our unit tests.
 
 \subsection*{Solution Verification/Test Steps}
 \begin{itemize}
@@ -72,8 +72,18 @@
     \item The output will show data from all three operations on the resource. It will show the beginning of the operation, how many operations are currently running, and then the results of that operation.
     \item Every 5 seconds it prints the size and contents of the list. Search for "LIST SIZE" and see that the list grows and shrinks throughout the duration
     \item When there are 3 operations running at the same time the program will print "Resource at capacity", followed by 3 running threads. When the operations go back to 0, the program will print "Resource emptied" to show it is good to go again. Search for these strings to verify
-    \item Search for "1 running thread", "2 running threads", "3 running tthreads" to verify there are concurrent operations
+    \item Search for "1 running thread", "2 running threads", "3 running threads" to verify there are concurrent operations
     \item Code has many comments and logic is pretty clear. Output combined with code should show everything you need to prove it's working as specified
+\end{itemize}
+
+\subsection*{Test Cases}
+    In order to continue to prove that our algorithm solves both problems, we have also created test cases based off five different cases that we believed were important to prove the accuracy of our tests. It should be noted that we had issues compiling our tests and they cannot be run in their current states. Instead, these test cases should show the process in how we would prove that our algorithm does indeed work, in combination with the printing of the state as described in the above section. The cases we identified from the assignment in which we believed we should also test to prove the algorithm is correct is listed below. For each of these cases, there is a corresponding test file with it's name initially listed in parenthesis.
+\begin{itemize}
+    \item (testOpen) A process can access the resource when less than three processes are using the resource
+    \item (testLocked) After three processes are using the resource, the resource becomes locked and does not allow additional processes until all current processes release their use.
+    \item (testInserter) There can never be more than one inserter using the resource
+    \item (testDeleter) There can never be more than one deleter using the resource
+    \item (testDeletion2) When a deletion is taking place, there cannot be an active search or insertion
 \end{itemize}
 
 \end{singlespace}

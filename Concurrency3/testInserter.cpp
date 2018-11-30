@@ -45,9 +45,6 @@ int main(int argc, char const *argv[]) {
   assert(state.counter == 1);
   std::cout << ">> SUCCESS!" << '\n\n';
 
-  std::cout << ">> Sleeping to allow search threads to run" << '\n\n';
-  randomSleep();
-
   std::cout << ">> Attempting to start second inserter" << '\n';
   pthread_create(&inserterThread[1], NULL, inserter, &resource);
 
